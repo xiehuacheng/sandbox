@@ -1,0 +1,26 @@
+[project]
+name = "sandbox"
+version = "0.1.0"
+description = "DeepAgents 接入 AgentScope Runtime BrowserSandbox 的独立 uv 项目示例"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "agentscope-runtime>=1.1.5b1",
+    "deepagents",
+    "langchain-openai>=1.2.0",
+    "langgraph-cli[inmem]>=0.4.24",
+]
+
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = true
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
