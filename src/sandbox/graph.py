@@ -38,6 +38,7 @@ os.environ.setdefault("CONTAINER_DEPLOYMENT", "docker")
 # 这些导入依赖上面的环境变量，所以必须放在环境初始化之后。
 from deepagents import create_deep_agent  # noqa: E402
 
+from sandbox.diagnostics import DiagnosticsMiddleware  # noqa: E402
 from sandbox.session_backend import (  # noqa: E402
     SessionSandboxManager,
     create_session_backend_factory,
@@ -96,6 +97,7 @@ def create_graph() -> Any:
     return create_deep_agent(
         model=get_model_name(),
         backend=backend,
+        middleware=[DiagnosticsMiddleware()],
     )
 
 
