@@ -10,8 +10,6 @@ import threading
 from typing import Any
 
 from agentscope_runtime.sandbox import BrowserSandbox
-from langchain.tools import ToolRuntime
-
 from sandbox.backend import AgentScopeDeepAgentsBackend
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -38,7 +36,7 @@ class SessionSandboxManager:
         # LangGraph 可能并发执行多个工具调用，这里用锁保护会话沙箱的创建和关闭。
         self._lock = threading.Lock()
 
-    def backend_for_runtime(self, runtime: ToolRuntime[Any, Any] | None = None) -> AgentScopeDeepAgentsBackend:
+    def backend_for_runtime(self, runtime: object | None = None) -> AgentScopeDeepAgentsBackend:
         """返回当前 LangGraph 线程对应的沙箱后端。
 
         第一次遇到某个 session_id 时创建新的 BrowserSandbox；
@@ -115,10 +113,10 @@ class SessionSandboxManager:
         log(f"已关闭会话沙箱数量：{len(backends)}")
 
 
-def create_session_backend_factory(manager: SessionSandboxManager) -> Callable[[ToolRuntime[Any, Any]], AgentScopeDeepAgentsBackend]:
+def create_session_backend_factory(manager: SessionSandboxManager) -> Callable[[object], AgentScopeDeepAgentsBackend]:
     """返回绑定到 SessionSandboxManager 的 DeepAgents 后端工厂。"""
 
-    def factory(runtime: ToolRuntime[Any, Any]) -> AgentScopeDeepAgentsBackend:
+    def factory(runtime: object) -> AgentScopeDeepAgentsBackend:
         """DeepAgents 每次执行工具时会调用这个函数获取当前线程的后端。"""
 
         return manager.backend_for_runtime(runtime)
@@ -128,6 +126,15 @@ def create_session_backend_factory(manager: SessionSandboxManager) -> Callable[[
 
 def thread_id_from_runtime(runtime: object | None) -> str:
     """从 ToolRuntime 中提取 LangGraph 线程 id，用来隔离不同用户的沙箱。"""
+
+    # DeepAgents 在模型调用前解析 backend 时传入的是 LangGraph Runtime；
+    # 这个对象没有 config，线程信息放在 execution_info.thread_id。
+    execution_info = getattr(runtime, "execution_info", None)
+    if execution_info is not None:
+        for key in ("thread_id", "run_id", "checkpoint_id"):
+            value = getattr(execution_info, key, None)
+            if value:
+                return str(value)
 
     config = getattr(runtime, "config", None)
     candidates: list[dict[str, Any]] = []
