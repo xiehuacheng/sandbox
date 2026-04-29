@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
+import re
 import threading
 from typing import Any
 
@@ -10,6 +12,9 @@ from agentscope_runtime.sandbox import BrowserSandbox
 from langchain.tools import ToolRuntime
 
 from sandbox.backend import AgentScopeDeepAgentsBackend
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SESSIONS_MOUNT_DIR = PROJECT_ROOT / "sessions_mount_dir"
 
 
 class SessionSandboxManager:
@@ -52,7 +57,10 @@ class SessionSandboxManager:
     def _create_backend(self, session_id: str) -> AgentScopeDeepAgentsBackend:
         """创建 BrowserSandbox，并包装成 DeepAgents 后端。"""
 
-        sandbox = BrowserSandbox()
+        # 传入 workspace_dir 会让 AgentScope 直接创建容器并挂载该目录，
+        # 避免默认的 sandbox pool 路径在本地开发环境中没有预热容器时卡住。
+        workspace_dir = session_workspace_dir(session_id)
+        sandbox = BrowserSandbox(workspace_dir=str(workspace_dir))
         try:
             sandbox.__enter__()
             try:
@@ -136,3 +144,15 @@ def thread_id_from_runtime(runtime: object | None) -> str:
             if value:
                 return str(value)
     return "default"
+
+
+def session_workspace_dir(session_id: str) -> Path:
+    """返回当前 LangGraph 会话对应的宿主机挂载目录。"""
+
+    safe_session_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", session_id).strip("._")
+    if not safe_session_id:
+        safe_session_id = "default"
+
+    workspace_dir = SESSIONS_MOUNT_DIR / safe_session_id
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    return workspace_dir

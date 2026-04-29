@@ -60,6 +60,8 @@ session_backend.py 从 ToolRuntime 里取 thread_id
   ↓
 同一个 thread_id 复用同一个 BrowserSandbox；新的 thread_id 创建新沙箱
   ↓
+每个 session 会挂载到本地 sessions_mount_dir/<thread_id>
+  ↓
 backend.py 把 DeepAgents 的 execute/read/write 等操作转成 AgentScope 沙箱命令
 ```
 
@@ -140,6 +142,14 @@ write_todos
 `Blocking call to socket.socket.connect`：开发环境使用 `./run_langgraph_dev.sh`，它会加 `--allow-blocking --no-reload`。
 
 `No sandbox available`：这是 AgentScope 的泛化错误。常见原因是沙箱后端未启动、容器后端无权限、默认 BrowserSandbox 镜像不可用，或沙箱资源耗尽。
+
+当前项目会给每个 LangGraph `thread_id` 传入独立的 `workspace_dir`，路径在：
+
+```text
+sessions_mount_dir/<thread_id>
+```
+
+这样 AgentScope 会直接创建容器并挂载这个目录，不依赖预热的 sandbox pool。这个目录是运行数据，已经被 `.gitignore` 忽略。
 
 服务器上可以先单独检查默认 BrowserSandbox 镜像：
 
