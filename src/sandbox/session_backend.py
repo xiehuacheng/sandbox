@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 import re
+import sys
 import threading
 from typing import Any
 
@@ -15,6 +16,12 @@ from sandbox.backend import AgentScopeDeepAgentsBackend
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SESSIONS_MOUNT_DIR = PROJECT_ROOT / "sessions_mount_dir"
+
+
+def log(message: str) -> None:
+    """把关键诊断信息打印到 LangGraph dev 控制台。"""
+
+    print(f"[sandbox] {message}", file=sys.stderr, flush=True)
 
 
 class SessionSandboxManager:
@@ -39,11 +46,15 @@ class SessionSandboxManager:
         """
 
         session_id = thread_id_from_runtime(runtime)
+        log(f"获取会话后端：session_id={session_id}")
         with self._lock:
             backend = self._backends.get(session_id)
             if backend is None:
+                log(f"当前会话还没有沙箱，准备创建：session_id={session_id}")
                 backend = self._create_backend_for_session(session_id)
                 self._backends[session_id] = backend
+            else:
+                log(f"复用当前会话已有沙箱：session_id={session_id}")
             return backend
 
     def _create_backend_for_session(self, session_id: str) -> AgentScopeDeepAgentsBackend:
@@ -60,9 +71,11 @@ class SessionSandboxManager:
         # 传入 workspace_dir 会让 AgentScope 直接创建容器并挂载该目录，
         # 避免默认的 sandbox pool 路径在本地开发环境中没有预热容器时卡住。
         workspace_dir = session_workspace_dir(session_id)
+        log(f"创建 BrowserSandbox：workspace_dir={workspace_dir}")
         sandbox = BrowserSandbox(workspace_dir=str(workspace_dir))
         try:
             sandbox.__enter__()
+            log(f"BrowserSandbox 启动成功：sandbox_id={sandbox.sandbox_id}")
             try:
                 backend = AgentScopeDeepAgentsBackend.from_existing(
                     sandbox,
@@ -99,6 +112,7 @@ class SessionSandboxManager:
         # 退出锁之后再关闭后端，避免关闭底层沙箱时阻塞新的管理器操作。
         for backend in backends:
             backend.close()
+        log(f"已关闭会话沙箱数量：{len(backends)}")
 
 
 def create_session_backend_factory(manager: SessionSandboxManager) -> Callable[[ToolRuntime[Any, Any]], AgentScopeDeepAgentsBackend]:

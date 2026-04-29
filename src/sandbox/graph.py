@@ -5,7 +5,14 @@ from __future__ import annotations
 import atexit
 import os
 from pathlib import Path
+import sys
 from typing import Any
+
+
+def log(message: str) -> None:
+    """把 graph 加载阶段的关键信息打印到 LangGraph dev 控制台。"""
+
+    print(f"[sandbox] {message}", file=sys.stderr, flush=True)
 
 
 def load_env_file(path: Path = Path(".env")) -> None:
@@ -80,6 +87,7 @@ def create_graph() -> Any:
     """构建 DeepAgent graph，供 LangGraph 部署使用。"""
 
     validate_model_config()
+    log(f"创建 LangGraph agent：model={get_model_name()} deployment={os.environ.get('CONTAINER_DEPLOYMENT')}")
     sandbox_manager = get_sandbox_manager()
     # 这里传给 DeepAgents 的不是单个后端，而是一个工厂函数。
     # DeepAgents 执行工具时会把 ToolRuntime 传进来，工厂函数再据此选择当前线程的沙箱。
