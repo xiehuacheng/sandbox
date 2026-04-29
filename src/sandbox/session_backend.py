@@ -76,7 +76,9 @@ class SessionSandboxManager:
         return RuntimeError(
             "AgentScope BrowserSandbox 启动失败。常见原因是沙箱后端未启动、"
             "当前用户无权访问容器后端，或默认 BrowserSandbox 镜像不可用。"
-            "如果使用 Docker 后端，请在服务器上确认 `docker ps` 可执行。"
+            "如果使用 Docker 后端，请在服务器上确认 `docker ps` 可执行，"
+            "并确认默认镜像 `agentscope/runtime-sandbox-browser:latest` 能被拉取和启动。"
+            f"原始错误：{exc}"
         )
 
     def close(self) -> None:

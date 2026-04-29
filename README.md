@@ -141,6 +141,23 @@ write_todos
 
 `No sandbox available`：这是 AgentScope 的泛化错误。常见原因是沙箱后端未启动、容器后端无权限、默认 BrowserSandbox 镜像不可用，或沙箱资源耗尽。
 
+服务器上可以先单独检查默认 BrowserSandbox 镜像：
+
+```bash
+docker ps
+docker pull agentscope/runtime-sandbox-browser:latest
+docker run --rm -d --name sandbox-browser-check agentscope/runtime-sandbox-browser:latest
+docker logs sandbox-browser-check
+docker rm -f sandbox-browser-check
+```
+
+如果 Docker Hub 拉取慢或失败，可以改用 AgentScope 官方镜像仓库：
+
+```bash
+export RUNTIME_SANDBOX_REGISTRY=agentscope-registry.ap-southeast-1.cr.aliyuncs.com
+./run_langgraph_dev.sh --host 127.0.0.1 --port 2024
+```
+
 `Docker client initialization failed: Error while fetching server API version`：当前配置使用 `CONTAINER_DEPLOYMENT=docker`，但 LangGraph 进程连不上 Docker daemon。先确认本机有 `docker` 命令并且 `docker ps` 可以执行；如果使用 Colima，设置 `DOCKER_HOST=unix://$HOME/.colima/docker.sock`。
 
 `Required package 'langgraph-api' is not installed` 且提示 Python 3.9：通常是项目改名或移动后，`.venv/bin/langgraph` 的入口脚本还指向旧虚拟环境。执行下面命令重新生成入口脚本：
