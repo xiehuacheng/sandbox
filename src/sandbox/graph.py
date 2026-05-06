@@ -40,11 +40,15 @@ from deepagents import create_deep_agent  # noqa: E402
 
 from sandbox.diagnostics import DiagnosticsMiddleware  # noqa: E402
 from sandbox.session_backend import (  # noqa: E402
-    SessionSandboxManager,
+    SANDBOX_PROJECT_SKILLS_DIR,
     create_session_backend_factory,
 )
-
-_SANDBOX_MANAGER: SessionSandboxManager | None = None
+from sandbox.runtime import (  # noqa: E402
+    close_backend,
+    get_sandbox_manager,
+    inject_chrome_devtools,
+    inject_npm_cli,
+)
 
 
 def get_model_name() -> str:
@@ -64,26 +68,6 @@ def validate_model_config() -> None:
         raise RuntimeError("DEEPAGENTS_MODEL 使用 openai: 前缀时，请先在 .env 中填写 OPENAI_API_KEY。")
 
 
-def get_sandbox_manager() -> SessionSandboxManager:
-    """创建并复用按 LangGraph 会话管理 AgentScope 沙箱的管理器。"""
-
-    global _SANDBOX_MANAGER
-
-    if _SANDBOX_MANAGER is None:
-        _SANDBOX_MANAGER = SessionSandboxManager()
-    return _SANDBOX_MANAGER
-
-
-def close_backend() -> None:
-    """进程退出时关闭所有 AgentScope 会话沙箱。"""
-
-    global _SANDBOX_MANAGER
-
-    if _SANDBOX_MANAGER is not None:
-        _SANDBOX_MANAGER.close()
-    _SANDBOX_MANAGER = None
-
-
 def create_graph() -> Any:
     """构建 DeepAgent graph，供 LangGraph 部署使用。"""
 
@@ -97,6 +81,7 @@ def create_graph() -> Any:
     return create_deep_agent(
         model=get_model_name(),
         backend=backend,
+        skills=[SANDBOX_PROJECT_SKILLS_DIR],
         middleware=[DiagnosticsMiddleware()],
     )
 

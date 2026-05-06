@@ -7,6 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "agentscope-runtime>=1.1.5b1",
     "deepagents",
+    "fastapi>=0.136.1",
     "langchain-openai>=1.2.0",
     "langgraph-cli[inmem]>=0.4.24",
 ]

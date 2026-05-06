@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import os
 import posixpath
 import shlex
 from typing import Any
@@ -14,6 +15,12 @@ from deepagents.backends.protocol import (
     FileUploadResponse,
 )
 from deepagents.backends.sandbox import BaseSandbox as DeepAgentsBaseSandbox
+
+DEFAULT_CHROME_DEVTOOLS_PACKAGE = "chrome-devtools-mcp@0.23.0"
+CHROME_DEVTOOLS_PACKAGE_ENV = "CHROME_DEVTOOLS_MCP_PACKAGE"
+WORKSPACE_BIN_DIR = "/workspace/.local/bin"
+NPM_TOOLS_PREFIX_DIR = "/workspace/.npm-tools"
+NPM_CACHE_DIR = "/workspace/.npm-cache"
 
 
 class AgentScopeDeepAgentsBackend(DeepAgentsBaseSandbox):
@@ -64,6 +71,7 @@ class AgentScopeDeepAgentsBackend(DeepAgentsBaseSandbox):
     ) -> ExecuteResponse:
         """执行 DeepAgents 传入的 shell 命令，并转换成 DeepAgents 的响应格式。"""
 
+        command = self._with_runtime_environment(command)
         if timeout is not None and timeout > 0:
             # DeepAgents 的 execute 支持 timeout，这里转成沙箱内的 shell timeout。
             command = f"timeout {int(timeout)}s sh -lc {shlex.quote(command)}"
@@ -75,6 +83,54 @@ class AgentScopeDeepAgentsBackend(DeepAgentsBaseSandbox):
             exit_code=exit_code,
             truncated=False,
         )
+
+    def inject_chrome_devtools(
+        self,
+        *,
+        package: str | None = None,
+        force: bool = False,
+        timeout: int = 600,
+    ) -> ExecuteResponse:
+        """在当前沙箱工作区安装 chrome-devtools CLI。"""
+
+        package = package or os.environ.get(
+            CHROME_DEVTOOLS_PACKAGE_ENV,
+            DEFAULT_CHROME_DEVTOOLS_PACKAGE,
+        )
+        return self.inject_npm_cli(
+            package=package,
+            commands=["chrome-devtools", "chrome-devtools-mcp"],
+            force=force,
+            install_name="chrome-devtools",
+            timeout=timeout,
+        )
+
+    def inject_npm_cli(
+        self,
+        *,
+        package: str,
+        commands: list[str],
+        force: bool = False,
+        install_name: str | None = None,
+        timeout: int = 600,
+    ) -> ExecuteResponse:
+        """在当前沙箱工作区安装 npm CLI 包，并暴露指定命令。
+
+        `package` 是 npm 包规格，例如 `chrome-devtools-mcp@0.23.0`。
+        `commands` 是要放进 `/workspace/.local/bin` 的命令入口。
+        `install_name` 用来决定 npm prefix 目录名；不传时从第一个命令推导。
+        """
+
+        if not commands:
+            raise ValueError("commands 不能为空。")
+
+        command = self._npm_cli_install_command(
+            package_spec=package,
+            commands=commands,
+            force=force,
+            install_name=install_name or commands[0],
+        )
+        return self.execute(command, timeout=timeout)
 
     def upload_files(self, files: list[tuple[str, bytes]]) -> list[FileUploadResponse]:
         """把 DeepAgents 文件写入 AgentScope 沙箱的 /workspace。"""
@@ -185,3 +241,98 @@ class AgentScopeDeepAgentsBackend(DeepAgentsBaseSandbox):
             "import base64, pathlib; "
             f"pathlib.Path({path!r}).write_bytes(base64.b64decode({encoded!r}))"
         )
+
+    def _with_runtime_environment(self, command: str) -> str:
+        """让沙箱内的动态注入命令在后续 execute 中可见。"""
+
+        return (
+            f"export PATH={shlex.quote(WORKSPACE_BIN_DIR)}:$PATH; "
+            f"export npm_config_cache={shlex.quote(NPM_CACHE_DIR)}; "
+            f"{command}"
+        )
+
+    def _npm_cli_install_command(
+        self,
+        *,
+        package_spec: str,
+        commands: list[str],
+        force: bool,
+        install_name: str,
+    ) -> str:
+        force_value = "1" if force else "0"
+        safe_install_name = self._safe_npm_install_name(install_name)
+        command_lines = "\n".join(shlex.quote(command) for command in commands)
+        script = f"""set -eu
+PACKAGE={shlex.quote(package_spec)}
+FORCE={force_value}
+PREFIX={shlex.quote(posixpath.join(NPM_TOOLS_PREFIX_DIR, safe_install_name))}
+BIN_DIR={shlex.quote(WORKSPACE_BIN_DIR)}
+NPM_CACHE={shlex.quote(NPM_CACHE_DIR)}
+mkdir -p "$PREFIX" "$BIN_DIR" "$NPM_CACHE" /workspace/.cache
+COMMANDS=$(cat <<'COMMANDS'
+{command_lines}
+COMMANDS
+)
+
+if [ "$FORCE" != "1" ]; then
+  ALL_AVAILABLE=1
+  for CMD in $COMMANDS; do
+    if [ ! -x "$BIN_DIR/$CMD" ]; then
+      ALL_AVAILABLE=0
+      break
+    fi
+  done
+  if [ "$ALL_AVAILABLE" = "1" ]; then
+    echo "npm CLI already available: $COMMANDS"
+    exit 0
+  fi
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Node.js is required to inject npm CLI tools, but node was not found in the sandbox." >&2
+  exit 127
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "npm is required to inject npm CLI tools, but npm was not found in the sandbox." >&2
+  exit 127
+fi
+
+node - <<'NODE'
+const [major, minor] = process.versions.node.split('.').map(Number);
+const supported =
+  major > 22 ||
+  (major === 22 && minor >= 12) ||
+  (major === 20 && minor >= 19);
+if (!supported) {{
+  console.error(
+    `npm CLI injection requires Node.js ^20.19.0 || ^22.12.0 || >=23; found ${{process.version}}.`,
+  );
+  process.exit(1);
+}}
+NODE
+
+npm install --prefix "$PREFIX" --omit=dev --no-audit --no-fund "$PACKAGE"
+
+for CMD in $COMMANDS; do
+  if [ ! -x "$PREFIX/node_modules/.bin/$CMD" ]; then
+    echo "Installed package does not expose command: $CMD" >&2
+    exit 1
+  fi
+  cat > "$BIN_DIR/$CMD" <<EOF
+#!/bin/sh
+export HOME=/workspace
+export XDG_CACHE_HOME=/workspace/.cache
+export npm_config_cache=/workspace/.npm-cache
+exec "$PREFIX/node_modules/.bin/$CMD" "\\$@"
+EOF
+  chmod +x "$BIN_DIR/$CMD"
+done
+
+echo "npm CLI injected: $COMMANDS"
+"""
+        return f"sh -lc {shlex.quote(script)}"
+
+    def _safe_npm_install_name(self, value: str) -> str:
+        safe = "".join(char if char.isalnum() or char in "._-" else "-" for char in value)
+        return safe.strip(".-_") or "tool"

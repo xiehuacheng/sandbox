@@ -3222,6 +3222,7 @@ source = { editable = "." }
 dependencies = [
     { name = "agentscope-runtime" },
     { name = "deepagents" },
+    { name = "fastapi" },
     { name = "langchain-openai" },
     { name = "langgraph-cli", extra = ["inmem"] },
 ]
@@ -3230,6 +3231,7 @@ dependencies = [
 requires-dist = [
     { name = "agentscope-runtime", specifier = ">=1.1.5b1" },
     { name = "deepagents" },
+    { name = "fastapi", specifier = ">=0.136.1" },
     { name = "langchain-openai", specifier = ">=1.2.0" },
     { name = "langgraph-cli", extras = ["inmem"], specifier = ">=0.4.24" },
 ]

@@ -3,5 +3,8 @@
   "graphs": {
     "agent": "./src/sandbox/graph.py:agent"
   },
+  "http": {
+    "app": "./src/sandbox/api.py:app"
+  },
   "env": "./.env"
 }
